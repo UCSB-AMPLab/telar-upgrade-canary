@@ -1,0 +1,249 @@
+"""
+Tests for process_audio.py — Build-time audio processing script.
+
+Covers pure functions:
+  - convert_audiowaveform_to_peaks: format conversion + normalisation
+  - compute_cache_key: SHA256 hashing for skip-if-unchanged caching
+  - check_audio_dependencies: system tool detection
+  - find_audio_objects: objects.json filtering for audio files
+
+Version: v1.6.0
+"""
+import hashlib
+import json
+import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+import pytest
+
+# ---------------------------------------------------------------------------
+# Import target module
+# ---------------------------------------------------------------------------
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'scripts'))
+from process_audio import (
+    convert_audiowaveform_to_peaks,
+    compute_cache_key,
+    check_audio_dependencies,
+    find_audio_objects,
+)
+
+
+# ---------------------------------------------------------------------------
+# Test 1: convert_audiowaveform_to_peaks — 16-bit mono
+# ---------------------------------------------------------------------------
+
+def test_convert_audiowaveform_to_peaks_16bit_mono():
+    """16-bit mono input returns normalised floats in [0,1] range with correct structure."""
+    aw_data = {
+        'data': [-10000, 20000, -5000, 32767, 0, 16384],
+        'bits': 16,
+        'channels': 1,
+        'length': 3,
+    }
+    result = convert_audiowaveform_to_peaks(aw_data)
+
+    assert 'peaks' in result
+    assert 'length' in result
+    assert result['length'] == 3
+    assert isinstance(result['peaks'], list)
+    assert len(result['peaks']) == 1  # 1 channel
+    channel_peaks = result['peaks'][0]
+    assert len(channel_peaks) == 3  # 3 pixel-pairs
+
+    # Values should be max values normalised by 32767
+    # Sample 0: max = 20000, normalised = 20000/32767 ≈ 0.6105
+    assert abs(channel_peaks[0] - 20000 / 32767) < 0.001
+    # Sample 1: max = 32767, normalised = 1.0
+    assert abs(channel_peaks[1] - 32767 / 32767) < 0.001
+    # Sample 2: max = 16384, normalised = 16384/32767 ≈ 0.5
+    assert abs(channel_peaks[2] - 16384 / 32767) < 0.001
+
+    # All values must be in [0, 1]
+    for v in channel_peaks:
+        assert 0.0 <= v <= 1.0, f"Value {v} out of [0,1] range"
+
+
+# ---------------------------------------------------------------------------
+# Test 2: convert_audiowaveform_to_peaks — 8-bit stereo
+# ---------------------------------------------------------------------------
+
+def test_convert_audiowaveform_to_peaks_8bit_stereo():
+    """8-bit stereo input correctly splits channels and normalises by 127."""
+    # Interleaved: [min_ch0, max_ch0, min_ch1, max_ch1, ...]
+    # One sample, 2 channels: ch0_max=100, ch1_max=64
+    aw_data = {
+        'data': [-50, 100, -30, 64],
+        'bits': 8,
+        'channels': 2,
+        'length': 1,
+    }
+    result = convert_audiowaveform_to_peaks(aw_data)
+
+    assert len(result['peaks']) == 2  # 2 channels
+    assert result['length'] == 1
+
+    # Channel 0: max=100, normalised by 127
+    assert abs(result['peaks'][0][0] - 100 / 127) < 0.001
+    # Channel 1: max=64, normalised by 127
+    assert abs(result['peaks'][1][0] - 64 / 127) < 0.001
+
+
+# ---------------------------------------------------------------------------
+# Test 3: convert_audiowaveform_to_peaks — empty data
+# ---------------------------------------------------------------------------
+
+def test_convert_audiowaveform_to_peaks_empty():
+    """Empty data array returns {'peaks': [[]], 'length': 0}."""
+    aw_data = {
+        'data': [],
+        'bits': 16,
+        'channels': 1,
+        'length': 0,
+    }
+    result = convert_audiowaveform_to_peaks(aw_data)
+
+    assert result == {'peaks': [[]], 'length': 0}
+
+
+# ---------------------------------------------------------------------------
+# Test 4: compute_cache_key — different inputs produce different keys
+# ---------------------------------------------------------------------------
+
+def test_compute_cache_key_different_inputs():
+    """Different file content produces different hashes."""
+    with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f1:
+        f1.write(b'audio content A')
+        path1 = f1.name
+
+    with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f2:
+        f2.write(b'audio content B')
+        path2 = f2.name
+
+    key1 = compute_cache_key(path1)
+    key2 = compute_cache_key(path2)
+    assert key1 != key2
+
+
+# ---------------------------------------------------------------------------
+# Test 5: compute_cache_key — same inputs produce same key
+# ---------------------------------------------------------------------------
+
+def test_compute_cache_key_same_inputs():
+    """Same file content produces the same hash."""
+    with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
+        f.write(b'stable audio content')
+        path = f.name
+
+    key1 = compute_cache_key(path)
+    key2 = compute_cache_key(path)
+    assert key1 == key2
+
+    # Hex digest format (SHA256 = 64 hex chars)
+    assert len(key1) == 64
+    assert all(c in '0123456789abcdef' for c in key1)
+
+
+# ---------------------------------------------------------------------------
+# Test 6: check_audio_dependencies — audiowaveform missing
+# ---------------------------------------------------------------------------
+
+def test_check_audio_dependencies_missing_audiowaveform():
+    """Raises SystemExit when audiowaveform is not found."""
+    with patch('shutil.which', return_value=None):
+        with pytest.raises(SystemExit):
+            check_audio_dependencies()
+
+
+def test_check_audio_dependencies_missing_audiowaveform_message(capsys):
+    """Error message must contain 'audiowaveform'."""
+    with patch('shutil.which', return_value=None):
+        with pytest.raises(SystemExit):
+            check_audio_dependencies()
+        captured = capsys.readouterr()
+        assert 'audiowaveform' in captured.out or 'audiowaveform' in captured.err
+
+
+# ---------------------------------------------------------------------------
+# Test 7: check_audio_dependencies — audiowaveform is the ONLY requirement
+# ---------------------------------------------------------------------------
+
+def test_check_audio_dependencies_requires_audiowaveform_only():
+    """ffmpeg absence must not fail the check — peak generation never
+    invokes it (M4A inputs skip peaks and decode client-side instead)."""
+    with patch('shutil.which',
+               side_effect=lambda tool:
+               '/usr/local/bin/audiowaveform' if tool == 'audiowaveform' else None):
+        check_audio_dependencies()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Test 8: find_audio_objects — filters to audio files only
+# ---------------------------------------------------------------------------
+
+def test_find_audio_objects():
+    """Filters objects.json to only those with audio files present in objects/."""
+    objects_data = [
+        {'object_id': 'interview-hernandez'},
+        {'object_id': 'landscape-bogota', 'source_url': ''},
+        {'object_id': 'document-carta'},
+        {'object_id': 'song-cumbia'},
+    ]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        objects_dir = tmpdir / 'objects'
+        objects_dir.mkdir()
+        data_dir = tmpdir / '_data'
+        data_dir.mkdir()
+
+        # Create audio files for two objects
+        (objects_dir / 'interview-hernandez.mp3').write_bytes(b'fake mp3')
+        (objects_dir / 'song-cumbia.ogg').write_bytes(b'fake ogg')
+        # landscape-bogota and document-carta have no audio files
+
+        objects_json_path = data_dir / 'objects.json'
+        objects_json_path.write_text(json.dumps(objects_data))
+
+        results = find_audio_objects(objects_json_path, objects_dir)
+
+    assert len(results) == 2
+    result_ids = {r['object_id'] for r in results}
+    assert 'interview-hernandez' in result_ids
+    assert 'song-cumbia' in result_ids
+    assert 'landscape-bogota' not in result_ids
+    assert 'document-carta' not in result_ids
+
+    # Each result must have object_id, file_path, extension
+    for r in results:
+        assert 'object_id' in r
+        assert 'file_path' in r
+        assert 'extension' in r
+
+
+def test_find_audio_objects_uppercase_extension():
+    """Finds audio files with uppercase extensions (case-sensitive filesystems)."""
+    objects_data = [
+        {'object_id': 'field-recording'},
+    ]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        objects_dir = tmpdir / 'objects'
+        objects_dir.mkdir()
+        data_dir = tmpdir / '_data'
+        data_dir.mkdir()
+
+        (objects_dir / 'field-recording.MP3').write_bytes(b'fake mp3')
+
+        objects_json_path = data_dir / 'objects.json'
+        objects_json_path.write_text(json.dumps(objects_data))
+
+        results = find_audio_objects(objects_json_path, objects_dir)
+
+    assert len(results) == 1
+    assert results[0]['object_id'] == 'field-recording'
+    # Extension matches the on-disk filename so built URLs resolve on
+    # case-sensitive hosting
+    assert results[0]['extension'].lower() == 'mp3'

@@ -1,0 +1,94 @@
+{%- comment -%}
+IIIF URL mismatch warning — a self-diagnosing banner that catches the most
+common reason locally hosted images fail to appear: the address the site is
+being viewed at no longer matches the base URL baked into its IIIF manifests
+when the tiles were generated. The markup here is the hidden alert box; the
+diagnostic logic itself lives in assets/js/iiif-url-warning.js, a standalone
+classic script loaded below that decides whether to reveal it.
+
+This include stays self-contained: it carries the Liquid-dependent values the
+script needs (the objects.json and IIIF manifest base paths, plus the localized
+singular/plural affected-image strings) onto window.telarIIIFWarningConfig in a
+short inline script, then loads the external module. See the module's own
+header for how it uses that configuration to detect and report the mismatch.
+
+All user-facing strings come from lang.errors.iiif_mismatch in
+_data/languages/<telar_language>.yml.
+{%- endcomment -%}
+{% assign lang = site.data.languages[site.telar_language] | default: site.data.languages.en %}
+{% assign iiif_lang = lang.errors.iiif_mismatch %}
+
+<div id="iiif-url-warning" class="alert alert-warning telar-alert" role="alert" style="display: none;">
+  <strong>{{ iiif_lang.heading }}</strong>
+  <p>{{ iiif_lang.description }}</p>
+
+  <p class="mb-2"><strong>{{ iiif_lang.whats_happening }}</strong></p>
+  <ul class="mb-3">
+    <li>{{ iiif_lang.viewing_at }} <strong id="current-url"></strong></li>
+    <li>{{ iiif_lang.configured_for }} <strong id="manifest-url"></strong></li>
+  </ul>
+
+  <p class="mb-2"><strong id="affected-images-heading">{{ iiif_lang.affected_images }}</strong></p>
+  <ul class="mb-3" id="affected-images">
+    <!-- JavaScript will populate this list -->
+  </ul>
+
+  <!-- Production scenario (90% of users) -->
+  <div id="production-fix-instructions" style="display: none;">
+    <p class="mb-2"><strong>{{ iiif_lang.common_causes }}</strong></p>
+    <ul class="mb-3">
+      <li>{{ iiif_lang.cause_incorrect_settings }}</li>
+      <li>{{ iiif_lang.cause_moved_url }}</li>
+      <li>{{ iiif_lang.cause_preview_env }}</li>
+    </ul>
+
+    <p class="mb-2"><strong>{{ iiif_lang.fix_heading }}</strong></p>
+    <ol class="mb-3">
+      <li>{{ iiif_lang.fix_check_config }}
+        <ul>
+          <li>{{ iiif_lang.fix_your_site_at }} <strong id="production-current-url"></strong></li>
+          <li>{{ iiif_lang.fix_config_should_be }} <code id="production-config-suggestion"></code></li>
+        </ul>
+      </li>
+      <li>{{ iiif_lang.fix_commit_push }}</li>
+      <li>{{ iiif_lang.fix_auto_regenerate }}</li>
+    </ol>
+
+    <p class="mb-2"><small>{{ iiif_lang.fix_local_option }}</small></p>
+    <pre class="bg-light p-2 rounded"><code id="production-local-command"></code></pre>
+  </div>
+
+  <!-- Local development scenario (10% of users) -->
+  <div id="local-fix-instructions" style="display: none;">
+    <p class="mb-2"><strong>{{ iiif_lang.common_causes }}</strong></p>
+    <ul class="mb-3">
+      <li>{{ iiif_lang.local_cause_1 }}</li>
+      <li>{{ iiif_lang.local_cause_2 }}</li>
+    </ul>
+
+    <p class="mb-2"><strong>{{ iiif_lang.local_fix_heading }}</strong></p>
+    <pre class="bg-light p-2 rounded mb-3"><code id="local-command"></code></pre>
+
+    <p class="mb-2"><strong>{{ iiif_lang.local_alternative }}</strong></p>
+    <ol class="mb-0">
+      <li>{{ iiif_lang.local_fix_check_config }}</li>
+      <li>{{ iiif_lang.local_fix_run_with_note }}</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+// Liquid-dependent configuration for assets/js/iiif-url-warning.js: the
+// objects.json and IIIF manifest base paths (as relative_urls, so they carry
+// the site's baseurl), plus the localized singular/plural affected-image
+// strings from _data/languages/<telar_language>.yml.
+window.telarIIIFWarningConfig = {
+  objectsUrl: {{ "/objects.json" | relative_url | jsonify }},
+  iiifObjectsBase: {{ "/iiif/objects" | relative_url | jsonify }},
+  strings: {
+    affectedImagesSingular: {{ iiif_lang.affected_images_count_singular | jsonify }},
+    affectedImagesPlural: {{ iiif_lang.affected_images_count_plural | jsonify }}
+  }
+};
+</script>
+<script src="{{ '/assets/js/iiif-url-warning.js' | relative_url }}"></script>

@@ -1,0 +1,256 @@
+/**
+ * Viewer
+ *
+ * Styles for the IIIF image viewer embedded in story and object pages.
+ * The viewer wrapper (assets/js/telar-story/iiif-viewer.js) ships no
+ * chrome of its own, so selector-based specificity is enough here —
+ * no `!important` is needed.
+ *
+ * Container styles cover all three media types (image / video / audio).
+ * The .multipage class is added by object.html's inline script when
+ * wrapper.pages.length > 1 — it currently relaxes `overflow` so the
+ * wrapper's pagination chrome can extend beyond the viewer's rounded
+ * corners if it overflows. The pagination + error UI rules at the
+ * bottom of the file style the wrapper's injected DOM directly.
+ *
+ * @version v1.6.0
+ */
+
+/* Viewer Containers */
+#viewer-container {
+  width: 100%;
+  height: 100%;
+}
+
+#object-viewer {
+  width: 100%;
+  border-radius: 4px;
+  position: relative;
+}
+
+/* Image object page: 1:1 square, white weave background, inset shadow */
+#object-viewer.viewer-image {
+  aspect-ratio: 1 / 1;
+  max-height: 80vh;
+  overflow: hidden;
+  background: #fff url('../img/background-gris.svg') repeat;
+  background-size: 20px auto;
+  box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.12), inset 0 -2px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Multipage image objects: relax overflow so the wrapper's pagination
+   chrome can extend beyond the viewer's rounded clipping if needed. */
+#object-viewer.viewer-image.multipage {
+  overflow: visible;
+}
+
+/* Drop shadow on the IIIF image canvas (matches story plates) */
+#object-viewer.viewer-image .openseadragon-canvas canvas {
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.35));
+}
+
+/* Video object page: no fixed aspect ratio, transparent background */
+#object-viewer.viewer-video {
+  background: transparent;
+}
+
+/* Vimeo max-height constraint for extreme aspect ratios */
+#object-viewer.viewer-video iframe {
+  max-height: 80vh;
+}
+
+/* Audio object page: landscape strip, accent-tinted background set by JS */
+#object-viewer.viewer-audio {
+  aspect-ratio: 3 / 2;
+  max-height: 80vh;
+  min-height: 80px;
+  overflow: hidden;
+  /* solid accent-tinted background set inline by JS (no weave-pattern image
+     on the audio object viewer — see _layouts/object.html's viewer init) */
+}
+
+/* Object-page viewer: transparent OSD background so the weave pattern
+   set on #object-viewer shows through. Story-plate equivalent lives in
+   _story.scss alongside the .viewer-plate .viewer-instance weave rule. */
+#object-viewer .openseadragon-container {
+  background: transparent;
+}
+
+/* Audio object page: frosted glass controls (matches story .audio-btn) */
+.audio-object-controls {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  bottom: 12px;
+  right: 12px;
+}
+
+.audio-object-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.7);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  transition: background 0.15s ease, transform 0.15s ease;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: rgba(255, 255, 255, 0.85);
+      transform: scale(1.08);
+    }
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+  }
+}
+
+/* Audio object page: overlaid time display */
+.audio-object-time {
+  position: absolute;
+  z-index: 10;
+  bottom: 16px;
+  left: 12px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+/* ============================================================
+   Custom IIIF viewer chrome (iiif-viewer.js)
+   The wrapper appends .telar-iiif-pagination to its OSD container
+   on multi-page manifests when constructed with { showChrome: true }
+   (object.html).  Story pages pass showChrome:false, so this block
+   only renders on object-detail pages.
+   Pill design, expressed without forcing the cascade — selector
+   specificity is sufficient.
+   ============================================================ */
+
+.telar-iiif-pagination {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #dedede;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+  .prev-btn,
+  .next-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50px;
+    border: 1px solid #ddd;
+    background: #f8f8f8;
+    color: #333;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+
+    @media (hover: hover) and (pointer: fine) {
+      &:hover {
+        background: #fff;
+        border-color: #bbb;
+      }
+    }
+    &:focus-visible {
+      outline: 2px solid #0d6efd;
+      outline-offset: 2px;
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+  }
+
+  .page-input {
+    width: 4rem;
+    height: 36px;
+    padding: 0 0.5rem;
+    border-radius: 50px;
+    border: 1px solid #ddd;
+    background: #f8f8f8;
+    color: #333;
+    text-align: center;
+    font: inherit;
+
+    &:focus-visible {
+      outline: 2px solid #0d6efd;
+      outline-offset: 2px;
+    }
+
+    /* Hide the native number-input spinner — the pill design predates it */
+    appearance: textfield;
+    -moz-appearance: textfield;
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      appearance: none;
+      margin: 0;
+    }
+  }
+}
+
+/* ============================================================
+   Custom IIIF viewer error UI (iiif-viewer.js _injectErrorUI)
+   Renders when manifest fetch fails (network error, mixed content,
+   empty manifest, etc.). The reader sees this in place of a blank
+   viewer. Palette mirrors Bootstrap's warning-alert variant.
+   ============================================================ */
+
+.telar-iiif-error {
+  padding: 1rem 1.25rem;
+  margin: 0;
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  border-radius: 0.25rem;
+  color: #856404;
+
+  strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 1rem;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+}

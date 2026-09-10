@@ -1,0 +1,74 @@
+Telar
+Copyright (c) 2025-2026 Adelaida Ávila, Juan Cobo Betancourt, Natalie Cobo,
+Santiago Muñoz, and contributors
+
+This software is licensed under the MIT License. See LICENSE for details.
+
+
+Third-Party Software Notices
+============================
+
+OpenSeadragon
+-------------
+Copyright (c) OpenSeadragon contributors
+License: BSD 3-Clause
+Source: https://openseadragon.github.io/
+Version: 6.0.2
+
+OpenSeadragon is a web-based viewer for high-resolution zoomable images.
+Telar uses it as its IIIF image viewer; it replaced the Tify viewer (and
+its Vue dependency) in v1.4.0. The minified build is vendored at
+assets/vendor/openseadragon.min.js and loaded via a <script> tag — no
+CDN dependency, no external requests.
+
+Bootstrap
+---------
+Copyright (c) 2011-2024 The Bootstrap Authors
+License: MIT
+Source: https://getbootstrap.com/
+
+Lenis
+-----
+Copyright (c) Studio Freight
+License: MIT
+Source: https://github.com/darkroomengineering/lenis
+Bundled into telar-story.js via esbuild.
+
+Lenis is a smooth scroll library that provides a virtual scroll model
+with consistent physics across browsers. Telar bundles it into a single
+JavaScript file — no CDN dependency, no external requests.
+
+WaveSurfer.js
+-------------
+Copyright (c) katspaugh
+License: BSD 3-Clause
+Source: https://github.com/katspaugh/wavesurfer.js
+Version: 7.12.7
+
+WaveSurfer is an audio waveform rendering library, used only on pages
+that contain audio objects. The minified build (core plus the Regions
+plugin) is vendored at assets/vendor/wavesurfer/ and loaded by the story
+viewer with no external request; the standalone object page still loads
+it from a CDN.
+
+Vimeo Player.js
+---------------
+Copyright (c) Vimeo
+License: MIT
+Source: https://github.com/vimeo/player.js
+Loaded via CDN: https://player.vimeo.com/api/player.js
+
+The Vimeo Player API is loaded on pages that embed Vimeo videos.
+
+Lucide Icons
+------------
+Copyright (c) Lucide Contributors
+License: ISC
+Source: https://github.com/lucide-icons/lucide
+
+Telar uses a subset of Lucide icons as inline SVGs, embedded directly in
+the source code — no CDN dependency. Copies live in assets/js/embed.js,
+assets/js/share-panel.js, assets/js/story-unlock.js, and the templates
+_includes/share-button.html, _includes/share-panel.html,
+_layouts/index.html, _layouts/object.html, _layouts/story.html, and
+_layouts/objects-index.html.

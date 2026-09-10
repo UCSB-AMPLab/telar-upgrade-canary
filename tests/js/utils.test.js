@@ -1,0 +1,119 @@
+/**
+ * Tests for Telar Story – Shared Utilities
+ *
+ * Tests the utility functions: escapeHtml, getBasePath, and fixImageUrls.
+ * getBasePath and fixImageUrls need jsdom for window.location and
+ * document.createElement.
+ *
+ * @version v1.6.0
+ */
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import { getBasePath, fixImageUrls, escapeHtml } from '../../assets/js/telar-story/utils.js';
+
+// ── escapeHtml ───────────────────────────────────────────────────────────────
+
+describe('escapeHtml', () => {
+  it('escapes the HTML markup characters', () => {
+    expect(escapeHtml('<img src=x onerror=alert(1)>')).toBe(
+      '&lt;img src=x onerror=alert(1)&gt;'
+    );
+  });
+
+  it('escapes both quote characters so the result is attribute-safe', () => {
+    expect(escapeHtml('15" map')).toBe('15&quot; map');
+    expect(escapeHtml("d'Arc")).toBe('d&#39;Arc');
+  });
+
+  it('escapes the ampersand', () => {
+    expect(escapeHtml('Tom & Jerry')).toBe('Tom &amp; Jerry');
+  });
+
+  it('coerces null and undefined to an empty string', () => {
+    expect(escapeHtml(null)).toBe('');
+    expect(escapeHtml(undefined)).toBe('');
+  });
+
+  it('coerces non-string values to their string form', () => {
+    expect(escapeHtml(42)).toBe('42');
+  });
+});
+
+// ── getBasePath ──────────────────────────────────────────────────────────────
+
+describe('getBasePath', () => {
+  beforeEach(() => {
+    delete window.location;
+  });
+
+  it('returns base path for subpath URL', () => {
+    window.location = { pathname: '/telar/stories/story-1/' };
+    expect(getBasePath()).toBe('/telar');
+  });
+
+  it('returns slash when path has exactly two segments', () => {
+    window.location = { pathname: '/stories/story-1/' };
+    expect(getBasePath()).toBe('/');
+  });
+
+  it('returns empty string for single segment', () => {
+    window.location = { pathname: '/story-1/' };
+    expect(getBasePath()).toBe('');
+  });
+
+  it('returns deeper base path for multi-segment prefix', () => {
+    window.location = { pathname: '/site/telar/stories/story-1/' };
+    expect(getBasePath()).toBe('/site/telar');
+  });
+});
+
+// ── fixImageUrls ─────────────────────────────────────────────────────────────
+
+describe('fixImageUrls', () => {
+  it('prepends base path to site-relative image src', () => {
+    const result = fixImageUrls('<img src="/assets/img/photo.jpg">', '/telar');
+    const div = document.createElement('div');
+    div.innerHTML = result;
+    expect(div.querySelector('img').getAttribute('src')).toBe('/telar/assets/img/photo.jpg');
+  });
+
+  it('does not modify protocol-relative URLs', () => {
+    const result = fixImageUrls('<img src="//cdn.example.com/img.jpg">', '/telar');
+    const div = document.createElement('div');
+    div.innerHTML = result;
+    expect(div.querySelector('img').getAttribute('src')).toBe('//cdn.example.com/img.jpg');
+  });
+
+  it('does not modify absolute URLs', () => {
+    const result = fixImageUrls('<img src="https://example.com/img.jpg">', '/telar');
+    const div = document.createElement('div');
+    div.innerHTML = result;
+    expect(div.querySelector('img').getAttribute('src')).toBe('https://example.com/img.jpg');
+  });
+
+  it('handles multiple images with mixed URL types', () => {
+    const html = '<img src="/local/a.jpg"><img src="https://ext.com/b.jpg"><img src="/local/c.jpg">';
+    const result = fixImageUrls(html, '/base');
+    const div = document.createElement('div');
+    div.innerHTML = result;
+    const imgs = div.querySelectorAll('img');
+    expect(imgs[0].getAttribute('src')).toBe('/base/local/a.jpg');
+    expect(imgs[1].getAttribute('src')).toBe('https://ext.com/b.jpg');
+    expect(imgs[2].getAttribute('src')).toBe('/base/local/c.jpg');
+  });
+
+  it('handles empty base path', () => {
+    const result = fixImageUrls('<img src="/assets/img/photo.jpg">', '');
+    const div = document.createElement('div');
+    div.innerHTML = result;
+    expect(div.querySelector('img').getAttribute('src')).toBe('/assets/img/photo.jpg');
+  });
+
+  it('handles HTML with no images', () => {
+    const html = '<p>No images here</p>';
+    const result = fixImageUrls(html, '/telar');
+    const div = document.createElement('div');
+    div.innerHTML = result;
+    expect(div.querySelector('p').textContent).toBe('No images here');
+  });
+});
