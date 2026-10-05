@@ -1,0 +1,88 @@
+{%- comment -%}
+  Site header — the top navigation bar rendered on every page. The brand on the
+  left is either the configured logo image or, when none is set, the plain site
+  title. On the right sit a Bootstrap collapse toggle (for the mobile hamburger
+  menu) and a site-level share button.
+
+  Menu source — the navigation links come from _data/navigation.yml
+  (site.data.navigation.menu). Each entry is bilingual: title_en and titulo_es
+  are chosen by site.telar_language, with each falling back to the other so a
+  link is never left blank. Entries flagged external open in a new tab.
+
+  Collections toggle — sites that don't expose an object catalogue can hide the
+  /objects/ link. This is read as skip_collections, but the older
+  hide_collections key is still honoured as an alias so existing configs keep
+  working; the /objects/ menu item is skipped whenever either is set.
+
+  Fallback menu — if navigation.yml is missing or fails to parse, a hardcoded
+  English menu (Home, Objects, Glossary, About) is rendered so the site is never
+  left without navigation. The Objects entry in that fallback also respects the
+  collections toggle.
+{%- endcomment -%}
+<header class="site-header">
+  <nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <div class="container">
+      {% assign logo_path = site.logo | strip %}
+      {% if logo_path != "" %}
+      <a class="navbar-brand" href="{{ '/' | relative_url }}">
+        <img src="{{ logo_path | relative_url }}" alt="{{ site.title }}" class="site-logo">
+      </a>
+      {% else %}
+      <a class="navbar-brand" href="{{ '/' | relative_url }}">{{ site.title }}</a>
+      {% endif %}
+
+      <div class="d-flex align-items-center ms-auto order-lg-2">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        {% include share-button.html variant="navbar" context="site" %}
+      </div>
+
+      <div class="collapse navbar-collapse order-lg-1" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          {%- comment -%}Check if objects should be hidden from nav{%- endcomment -%}
+          {% assign dev_features = site['development-features'] %}
+          {%- comment -%}Support both new name (skip_collections) and legacy name (hide_collections){%- endcomment -%}
+          {%- comment -%}This alias is also computed in _layouts/index.html and _layouts/objects-index.html — one line each, not worth an include{%- endcomment -%}
+          {% assign skip_collections = dev_features.skip_collections | default: dev_features.hide_collections | default: false %}
+
+          {% if site.data.navigation.menu %}
+            {% for item in site.data.navigation.menu %}
+              {%- comment -%}Skip /objects/ link when skip_collections is enabled{%- endcomment -%}
+              {% if skip_collections and item.url == '/objects/' %}
+                {% continue %}
+              {% endif %}
+            <li class="nav-item">
+              <a class="nav-link"
+                 href="{{ item.url | relative_url }}"
+                 {% if item.external %}target="_blank" rel="noopener"{% endif %}>
+                {% if site.telar_language == 'es' %}
+                  {{ item.titulo_es | default: item.title_en }}
+                {% else %}
+                  {{ item.title_en | default: item.titulo_es }}
+                {% endif %}
+              </a>
+            </li>
+            {% endfor %}
+          {% else %}
+            <!-- Fallback: navigation.yml missing or broken -->
+            <li class="nav-item">
+              <a class="nav-link" href="{{ '/' | relative_url }}">{{ lang.navigation.home | default: 'Home' }}</a>
+            </li>
+            {% unless skip_collections %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ '/objects/' | relative_url }}">{{ lang.navigation.objects | default: 'Objects' }}</a>
+            </li>
+            {% endunless %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ '/glossary/' | relative_url }}">{{ lang.navigation.glossary | default: 'Glossary' }}</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ '/about/' | relative_url }}">{{ lang.navigation.about | default: 'About' }}</a>
+            </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </nav>
+</header>

@@ -1,0 +1,159 @@
+/**
+ * Reusable Patterns
+ *
+ * Reusable patterns shared across partials. The main pattern here is the panel
+ * colour inversion for tabs: in Telar's panel system, widgets inside panels use
+ * the opposite panel's colours for visual contrast. A tabs widget in the Layer 1
+ * panel (light background) gets Layer 2 colours (dark), and a tabs widget in
+ * Layer 2 gets Layer 1 colours. User pages follow the same convention as
+ * Layer 1. Rather than duplicating those colour rules for every context, this
+ * mixin generates them from a single definition.
+ *
+ * The tabs panel inversion below is the file's sole mixin of this kind.
+ *
+ * Also home to the carousel-caption and accordion panel colour inversions
+ * (same pattern as tabs) and the light-glass-button mixin shared between
+ * the share button and the back-to-home button.
+ *
+ * @version v1.6.0
+ */
+
+/* Tabs panel colour inversion
+ *
+ * Generates the full set of overrides needed to restyle a .telar-widget-tabs
+ * inside a particular context (a panel or a page type). The overrides strip the
+ * default white background and borders, then apply the provided colour pair to
+ * tab headers, active states, and tab content areas.
+ *
+ * $bg-var:   CSS custom property name for the background, e.g. --color-panel-layer2-bg
+ * $text-var: CSS custom property name for the text, e.g. --color-panel-layer2-text
+ */
+@mixin widget-tabs-panel-colours($bg-var, $text-var) {
+  .telar-widget-tabs {
+    background: transparent;
+    border: none;
+  }
+
+  .telar-widget-tabs .nav-tabs {
+    background: transparent;
+    border-bottom: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .telar-widget-tabs .nav-tabs .nav-item {
+    margin: 0;
+  }
+
+  .telar-widget-tabs .nav-tabs .nav-item:first-child .nav-link {
+    margin-left: 0;
+  }
+
+  .telar-widget-tabs .nav-tabs .nav-link {
+    border: none;
+    border-radius: 0.5rem 0.5rem 0 0;
+    padding: 0.75rem 1.25rem;
+    margin: 0;
+    background: var(#{$bg-var});
+    color: var(#{$text-var});
+    opacity: 0.7;
+  }
+
+  .telar-widget-tabs .nav-tabs .nav-link.active {
+    background: var(#{$bg-var});
+    color: var(#{$text-var});
+    border: none;
+    opacity: 1;
+  }
+
+  .telar-widget-tabs .tab-content {
+    background: var(#{$bg-var});
+    color: var(#{$text-var});
+    border-radius: 0 0.5rem 0 0;
+  }
+}
+
+/* Carousel caption panel colour inversion
+ *
+ * Generates the panel-colour override for .telar-widget-carousel caption
+ * bands, mirroring widget-tabs-panel-colours above. The small/caption-credit
+ * colour isn't derivable from the background/text pair — each panel context
+ * uses a different overlay opacity — so it is passed explicitly.
+ *
+ * $bg-var:       CSS custom property name for the caption background
+ * $text-var:     CSS custom property name for the caption text
+ * $credit-color: colour for the smaller credit/caption-credit line
+ */
+@mixin widget-carousel-caption-panel-colours($bg-var, $text-var, $credit-color) {
+  .telar-widget-carousel .carousel-caption-below {
+    background: var(#{$bg-var});
+    color: var(#{$text-var});
+  }
+
+  .telar-widget-carousel .carousel-caption-below small,
+  .telar-widget-carousel .carousel-caption-below .caption-credit {
+    color: $credit-color;
+  }
+}
+
+/* Accordion panel colour inversion
+ *
+ * Generates the panel-colour override for .telar-widget-accordion, mirroring
+ * widget-tabs-panel-colours above. The item border and button backgrounds
+ * aren't derivable from the background/text pair — each panel context uses
+ * different overlay opacities — so they are passed explicitly.
+ *
+ * $bg-var:            CSS custom property name for the background
+ * $text-var:          CSS custom property name for the text
+ * $item-border-color: accordion-item border colour
+ * $button-bg:         accordion-button background
+ * $button-active-bg:  accordion-button background when expanded (:not(.collapsed))
+ */
+@mixin widget-accordion-panel-colours($bg-var, $text-var, $item-border-color, $button-bg, $button-active-bg) {
+  .telar-widget-accordion .accordion-item {
+    background: var(#{$bg-var});
+    border-color: $item-border-color;
+  }
+
+  .telar-widget-accordion .accordion-button {
+    background: $button-bg;
+    color: var(#{$text-var});
+  }
+
+  .telar-widget-accordion .accordion-button:not(.collapsed) {
+    background: $button-active-bg;
+    color: var(#{$text-var});
+  }
+
+  .telar-widget-accordion .accordion-body {
+    color: var(#{$text-var});
+  }
+}
+
+/* Light-glass button
+ *
+ * Shared visual treatment for floating translucent buttons over the viewer
+ * plate — the share button and the back-to-home button both use it. Only the
+ * properties identical across both sites live here; each site keeps its own
+ * display mode, position, sizing, font, and transition timing.
+ */
+@mixin light-glass-button {
+  background: rgba(255, 255, 255, 0.6);
+  color: rgba(0, 0, 0, 0.7);
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  cursor: pointer;
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: rgba(255, 255, 255, 0.85);
+      color: rgba(0, 0, 0, 0.9);
+    }
+  }
+}
+

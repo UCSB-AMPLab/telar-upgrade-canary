@@ -1,0 +1,80 @@
+<!--
+  Story Step Component
+
+  One step of a scrolling story — the right-hand text column (question, answer,
+  and an optional "learn more" panel trigger) paired with the data that tells the
+  viewer what to show. This include is the data element only: the visual cards
+  that animate in the viewer stage are built by card-pool.js at runtime, reading
+  the data-* attributes set here. Card z-index is computed there using the banding
+  scheme, never set inline.
+
+  Variables come from the page's step loop via include parameters: step_number
+  (the step's position) plus the camera target on the object — object_id, x, y,
+  zoom, region, and the media-specific page / clip_start / clip_end / loop / alt_text,
+  each emitted only when present. question and answer carry the prose (answer is
+  run through markdownify). viewer_warning, when set, surfaces a banner pointing
+  the author at objects.csv — shown when the named object or its IIIF manifest is
+  missing. The Layer 1 trigger renders only when the step supplies layer1_title or
+  layer1_text, labelled by layer1button (falling back to "Learn more"); the Layer 2
+  trigger is injected later by JavaScript, inside the open Layer 1 panel.
+-->
+
+{%- comment -%}Resolve the language pack locally: include scope does not reliably inherit
+the parent layout's `lang` assign, so the button label and warning strings below need it
+here. English fallback keeps the strings populated if the language is unset.{%- endcomment -%}
+{% if site.telar_language and site.data.languages[site.telar_language] %}
+  {% assign lang = site.data.languages[site.telar_language] %}
+{% else %}
+  {% assign lang = site.data.languages['en'] %}
+{% endif %}
+
+<div class="story-step"
+     data-step="{{ include.step_number }}"
+     data-object="{{ include.object_id }}"
+     data-x="{{ include.x }}"
+     data-y="{{ include.y }}"
+     data-zoom="{{ include.zoom }}"
+     data-region="{{ include.region }}"
+     {% if include.page %}data-page="{{ include.page }}"{% endif %}
+     {% if include.clip_start %}data-clip-start="{{ include.clip_start }}"{% endif %}
+     {% if include.clip_end %}data-clip-end="{{ include.clip_end }}"{% endif %}
+     {% if include.loop %}data-loop="{{ include.loop }}"{% endif %}
+     {% if include.alt_text %}data-alt="{{ include.alt_text }}"{% endif %}>
+
+  <!-- Main content wrapper -->
+  <div class="step-content">
+    <!-- Question (Main Heading) -->
+    <h2 class="step-question">{{ include.question }}</h2>
+
+    <!-- Answer (Main Content) -->
+    <div class="step-answer">
+      {{ include.answer | markdownify }}
+    </div>
+
+    <!-- Viewer Warning (if object or IIIF manifest is missing) -->
+    {% if include.viewer_warning and include.viewer_warning != "" %}
+    <div class="alert alert-warning telar-alert mt-3" role="alert">
+      <strong>{{ lang.errors.image_viewer_unavailable_alt | default: "⚠️ Image viewer unavailable" }}</strong>
+      <p class="mb-0 mt-2">
+        {{ include.viewer_warning }}<br>
+        {{ lang.errors.check_objects_csv | default: "Please check <code>telar-content/spreadsheets/objects.csv</code> to ensure the object exists and has a valid IIIF manifest URL." }}
+      </p>
+    </div>
+    {% endif %}
+
+    <!-- Layer 1 Panel Trigger -->
+    {% if (include.layer1_title and include.layer1_title != "") or (include.layer1_text and include.layer1_text != "") %}
+    <p class="mt-3">
+      <button class="panel-trigger" data-panel="layer1" data-step="{{ include.step_number }}">
+        {% if include.layer1button and include.layer1button != "" %}
+          {{ include.layer1button }}
+        {% else %}
+          {{ lang.buttons.learn_more | default: "Learn more" }}
+        {% endif %} →
+      </button>
+    </p>
+    {% endif %}
+
+    <!-- Layer 2 Panel Trigger: Dynamically added by JavaScript inside layer1 panel -->
+  </div>
+</div>

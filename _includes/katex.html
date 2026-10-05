@@ -1,0 +1,56 @@
+<!--
+  KaTeX Include
+  Loads KaTeX CSS, JS, auto-render, and mhchem from jsDelivr CDN.
+  Provides window.telarRenderLatex() for rendering LaTeX in dynamically
+  injected content (story panels, glossary definitions).
+
+  CDN URLs, version pin, and the delimiter list are read from _data/katex.yml,
+  the single source shared with assets/js/katex-loader.js (the lazy loader
+  story pages use, via window.telarKatexConfig set in _layouts/story.html).
+  To bump the KaTeX version, edit _data/katex.yml only.
+
+  The trust callback below (which \href URL schemes are permitted) is logic,
+  not data, so it stays hand-written here and in katex-loader.js — the two
+  copies are identical; keep them in sync if the policy changes.
+
+  Version: v1.6.0
+-->
+
+<!-- KaTeX CSS -->
+<link rel="stylesheet" href="{{ site.data.katex.css }}">
+
+<!-- KaTeX JS -->
+<script defer src="{{ site.data.katex.js }}"></script>
+
+<!-- KaTeX auto-render extension -->
+<script defer src="{{ site.data.katex.auto_render }}"></script>
+
+<!-- mhchem extension for chemical formulas -->
+<script defer src="{{ site.data.katex.mhchem }}"></script>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    // Render all LaTeX on page load
+    var katexDelimiters = {{ site.data.katex.delimiters | jsonify }};
+
+    renderMathInElement(document.body, {
+      delimiters: katexDelimiters,
+      throwOnError: false,
+      // Permit \href only for safe URL schemes. This disables \includegraphics,
+      // \html*, \url, etc. — KaTeX renders unpermitted commands as literal text.
+      trust: function (ctx) { return ctx.command === '\\href' && /^(https?:|mailto:)/.test(ctx.url); }
+    });
+
+    // Global function for re-rendering dynamic content (panels, glossary fetch)
+    window.telarRenderLatex = function(element) {
+      if (typeof renderMathInElement === 'function') {
+        renderMathInElement(element, {
+          delimiters: katexDelimiters,
+          throwOnError: false,
+          // Permit \href only for safe URL schemes (see note above).
+          trust: function (ctx) { return ctx.command === '\\href' && /^(https?:|mailto:)/.test(ctx.url); }
+        });
+      }
+    };
+  });
+</script>

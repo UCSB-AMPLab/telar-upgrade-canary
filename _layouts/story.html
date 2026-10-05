@@ -1,0 +1,409 @@
+{%- comment -%}
+  Story layout — the standalone, full-document reading experience for a single Telar
+  story. Unlike most pages it does NOT inherit the default shell; it is its own complete
+  HTML document so it can own the scroll surface, fixed navigation, and viewer plates
+  without the site header/footer competing for the viewport.
+
+  What it renders — the document <head> (same cascade-layer + Bootstrap + theme-font setup
+  as the default layout, plus a block of inline JS that hands localized strings and config
+  flags to the client), then a <body class="story-page"> containing: a fixed back
+  navigation button, a floating share button, the scroll surface, the intro card (title,
+  subtitle, optional byline/description, optional table of contents, and any author-facing
+  configuration warnings), and a hidden `step-data` block. That hidden block is the heart of
+  the page — for each story step it emits a `story-step.html` include carrying the question,
+  answer, object reference, and viewport coordinates (x/y/zoom/page) plus clip and layer
+  metadata; card-pool.js reads these at init to build the visual scroll-driven cards. The
+  layout closes by loading OpenSeadragon, the Telar core and story bundles, and conditionally
+  the unlock overlay for protected stories.
+
+  Key context — `page.data_file` names the story's data file under `site.data`; its first
+  entry may be a `_metadata` row carrying viewer warnings and feature flags (e.g. has_latex).
+  `lang` resolves from `site.telar_language` with an English fallback and supplies every
+  user-facing string. Theme fonts derive from `site.data.themes[site.telar_theme]`.
+
+  Non-obvious behaviour — encrypted (protected) stories take a deliberately leak-free path:
+  jekyll-seo-tag is bypassed in favour of a generic description and canonical URL, the byline
+  and description are suppressed from the intro card, and the steps are NOT rendered server-side
+  (an empty container is left for story-unlock.js to populate after decryption), so authored
+  content never ships in the HTML before the reader supplies the key. KaTeX is loaded lazily by
+  assets/js/katex-loader.js, only after storyData (or, for protected stories, has_latex
+  frontmatter) reveals the story uses LaTeX. "Christmas tree mode" is a development flag that
+  decorates warning headings, via assets/js/christmas-tree-decorator.js.
+{%- endcomment -%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
+
+  <!-- Bootstrap 5 CSS — loaded into the third-party layer so Telar rules win by layer order -->
+  <!-- This @layer order must stay identical to _layouts/default.html and the
+       documentation copy in _sass/_responsive.scss — the HTML declaration wins
+       the layer-ordering race, so it cannot be consolidated into one copy. -->
+  <style>@layer reset, third-party, telar-base, telar-bootstrap-overrides, telar-components, telar-overrides;</style>
+  <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>@import url('https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css') layer(third-party);</style>
+
+  <!-- Load language data with fallback to English -->
+  {% if site.telar_language and site.data.languages[site.telar_language] %}
+    {% assign lang = site.data.languages[site.telar_language] %}
+  {% else %}
+    {% assign lang = site.data.languages['en'] %}
+  {% endif %}
+
+  <!-- Check if Christmas Tree Mode is enabled in config -->
+  {% assign is_christmas_tree_mode = false %}
+  {% if site.development-features.christmas_tree_mode %}
+    {% assign is_christmas_tree_mode = true %}
+  {% endif %}
+
+  <!-- Check if step indicators should be shown -->
+  {% assign show_story_steps = true %}
+  {% if site.story_interface.show_story_steps == false %}
+    {% assign show_story_steps = false %}
+  {% endif %}
+
+  <!-- Protection is keyed on frontmatter. The _data JSON is plaintext
+       through the build (encryption happens post-build), so the data
+       file's shape does not signal protection and no template may read
+       it to decide protected behaviour. -->
+  {% assign is_encrypted = false %}
+  {% if page.protected %}
+    {% assign is_encrypted = true %}
+  {% endif %}
+  {%- comment -%}Single lookup of the story's data file, reused below.{%- endcomment -%}
+  {%- assign story_data = site.data[page.data_file] %}
+
+  <script>
+  // Expose Christmas Tree Mode to JavaScript
+  window.christmasTreeMode = {{ is_christmas_tree_mode }};
+
+  // Expose language strings to JavaScript. This layout is a standalone document
+  // (it does not render through default.html), so it must carry the full site-wide
+  // key set itself — the same set default.html defines for every other page. The
+  // merge form keeps both definitions safe to coexist if that ever changes.
+  window.telarLang = Object.assign(window.telarLang || {}, {
+    goDeeper: "{{ lang.buttons.go_deeper }}",
+    stepNumber: "{{ lang.story.step_number }}",
+    demoPanelBadge: "{{ lang.demo.panel_badge }}",
+    creditPrefix: "{{ lang.object.credit_prefix }}",
+    imageNotFoundLabel: {{ lang.errors.image_not_found_label | jsonify }},
+    imageNotFoundHint: {{ lang.errors.image_not_found_hint | jsonify }},
+    embedBanner: {
+      text: {{ lang.embed_banner.text | jsonify }},
+      link: "{{ lang.embed_banner.link }}",
+      siteFallback: {{ lang.embed_banner.site_fallback | jsonify }}
+    }{% if is_encrypted %},
+    unlock: {
+      errorEmpty: {{ lang.unlock.error_empty | default: "Please enter a key" | jsonify }},
+      errorIncorrect: {{ lang.unlock.error_incorrect | default: "Incorrect key. Please try again." | jsonify }}
+    }{% endif %}
+  });
+
+  // Expose config options to JavaScript
+  window.telarConfig = {
+    showObjectCredits: {{ site.story_interface.show_object_credits | default: false }},
+    viewer_preloading: {
+      max_viewer_cards: {{ site.development-features.viewer_preloading.max_viewer_cards | default: 8 }},
+      preload_steps: {{ site.development-features.viewer_preloading.preload_steps | default: 6 }},
+      loading_threshold: {{ site.development-features.viewer_preloading.loading_threshold | default: 5 }},
+      min_ready_viewers: {{ site.development-features.viewer_preloading.min_ready_viewers | default: 3 }}
+    },
+    cardPeekHeight: {{ site.card_peek_height | default: 1 }},
+    cardMessiness: {{ site.card_messiness | default: 20 }}
+  };
+
+  /*
+    Expose IIIF viewer lang strings to JavaScript (used by iiif-viewer.js's
+    pagination chrome + error UI). Mirrors the window.telarLang precedent.
+
+    Expone los textos del visor IIIF a JavaScript (usados por la paginación
+    y la interfaz de error de iiif-viewer.js). Sigue el patrón de window.telarLang.
+  */
+  window.telarViewerLang = {
+    prev_page: "{{ lang.object.viewer.prev_page }}",
+    next_page: "{{ lang.object.viewer.next_page }}",
+    page_input_label: "{{ lang.object.viewer.page_input_label }}",
+    page_input_aria: "{{ lang.object.viewer.page_input_aria }}",
+    image_unavailable_title: {{ lang.object.viewer.image_unavailable_title | jsonify }},
+    image_unavailable_detail: {{ lang.object.viewer.image_unavailable_detail | jsonify }}
+  };
+
+  </script>
+  <!-- Christmas Tree Mode warning decorator — reads window.christmasTreeMode
+       (set above) and, if on, prefixes warning headings with 🎄. See
+       assets/js/christmas-tree-decorator.js for the algorithm and its Python
+       counterpart in scripts/telar/processors/stories.py. -->
+  <script src="{{ '/assets/js/christmas-tree-decorator.js' | relative_url }}"></script>
+
+  <!-- Google Fonts - Dynamic based on theme -->
+  {% assign theme = site.data.themes[site.telar_theme] %}
+  {% assign heading_font = theme.fonts.headings | remove: "'" | split: ',' | first | strip %}
+  {% assign body_font = theme.fonts.body | remove: "'" | split: ',' | first | strip %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family={{ heading_font | replace: ' ', '+' }}:wght@400;700&family={{ body_font | replace: ' ', '+' }}:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+
+
+  <!-- Embed Mode Detection (must load early) -->
+  <script src="{{ '/assets/js/embed.js' | relative_url }}"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="{{ '/assets/css/telar.css' | relative_url }}?v={{ site.telar.version }}">
+
+  {% if is_encrypted %}
+  {%- comment -%}
+    Protected story: emit only leak-free SEO. jekyll-seo-tag would pull page.description (and any
+    excerpt) into <meta name="description"> / og:description, exposing authored content that is
+    meant to live behind the unlock gate — and gated content should not get a rich social preview.
+    The public title is already set in <title> above; here we add just a generic description and the
+    canonical URL.
+  {%- endcomment -%}
+  <meta name="description" content="{{ site.description }}">
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+  {% else %}
+  {% seo %}
+  {% endif %}
+</head>
+<body class="story-page">
+  <!-- Fixed navigation button: Back to Home on intro, Back to Start elsewhere -->
+  <nav aria-label="{{ lang.story.site_nav_label | default: 'Site navigation' }}">
+    <a href="{{ '/' | relative_url }}" class="btn-nav-back" id="btn-nav-back" data-home-url="{{ '/' | relative_url }}" data-home-text="{{ lang.buttons.back_to_home }}" data-start-text="{{ lang.buttons.back_to_start | default: 'Back to Start' }}">
+      <svg class="btn-nav-icon btn-nav-icon--home" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      <svg class="btn-nav-icon btn-nav-icon--start" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+      <span class="btn-nav-text">{{ lang.buttons.back_to_home }}</span>
+    </a>
+  </nav>
+
+  <!-- Fixed Share Button (hidden in embed mode, floats on right) -->
+  {% include share-button.html variant="icon-text" context="story" %}
+
+  <div class="scroll-surface" aria-hidden="true"></div>
+  <main class="story-container {% unless show_story_steps %}hide-step-indicators{% endunless %}">
+    <div class="card-stack">
+
+      <!-- Intro (z-index: 0 — covered by first viewer plate which is z-index 100) -->
+      <div class="story-intro{% if page.show_sections %} story-intro--toc{% endif %}" data-step="0" data-step-index="0" style="z-index: 0;">
+        <div class="intro-floating-card">
+          {% if page.demo %}
+          <p class="intro-demo-label">{{ lang.story.demo_label }}</p>
+          {% endif %}
+          <h1 class="intro-title">{{ page.title }}</h1>
+          {% if page.subtitle %}
+          <h2 class="intro-subtitle">{{ page.subtitle }}</h2>
+          {% endif %}
+          {%- comment -%}
+            For a protected (encrypted) story, the byline and description are author content that
+            should stay behind the unlock gate — only the title and subtitle are documented as public.
+            Suppress them from the intro card (and, below, from the SEO/OpenGraph meta).
+          {%- endcomment -%}
+          {% unless is_encrypted %}
+          {% if page.byline %}
+          <p class="intro-byline">{{ page.byline | markdownify | remove: '<p>' | remove: '</p>' }}</p>
+          {% endif %}
+          {% if page.description %}
+          <p class="intro-description">{{ page.description }}</p>
+          {% endif %}
+          {% endunless %}
+
+          {% if page.show_sections and page.data_file and is_encrypted == false %}
+            {% assign story_steps = story_data %}
+            {% assign section_cards = "" | split: "" %}
+            {% for s in story_steps %}
+              {% if s._metadata %}{% continue %}{% endif %}
+              {% assign obj = s.object | default: "" %}
+              {% if obj == "" and s.question %}
+                {% assign section_cards = section_cards | push: s %}
+              {% endif %}
+            {% endfor %}
+            {% if section_cards.size > 0 %}
+            <nav class="intro-toc" aria-label="{{ lang.story.sections_heading | default: 'Sections' }}">
+              <p class="intro-toc-heading">{{ lang.story.sections_heading | default: "Sections" }}</p>
+              <ul>
+                {% for sc in section_cards %}
+                <li><a href="#s{{ sc.step }}" class="intro-toc-link" data-target-step="{{ sc.step }}">{{ sc.question }}</a></li>
+                {% endfor %}
+              </ul>
+            </nav>
+            {% endif %}
+          {% endif %}
+
+          {% if page.data_file and is_encrypted == false %}
+            {% assign steps = story_data %}
+            {% if steps.size > 0 and steps[0]._metadata %}
+              {% assign metadata = steps[0] %}
+              {% if metadata.viewer_warnings.size > 0 %}
+                <div class="alert alert-warning telar-alert mt-3" role="alert" style="text-align: left;">
+                  <strong>{{ lang.errors.story_config_heading }}</strong>
+                  <p class="mb-2 mt-2">{{ lang.story.config_issues_heading }}</p>
+                  <ul class="mb-2">
+                  {% for warning in metadata.viewer_warnings %}
+                    <li>
+                      {% assign step_text = lang.story.step_number | replace: "{{ number }}", warning.step %}
+                      <strong>{{ step_text }}</strong>
+                      {% if warning.type == 'viewer' %}
+                        {{ lang.story.viewer_error_prefix }} {{ warning.message | markdownify | remove: '<p>' | remove: '</p>' | strip }}
+                      {% elsif warning.type == 'panel' %}
+                        {{ warning.message | markdownify | remove: '<p>' | remove: '</p>' | strip }}
+                      {% elsif warning.type == 'glossary' %}
+                        {{ lang.story.glossary_error_prefix }} {{ warning.message | markdownify | remove: '<p>' | remove: '</p>' | strip }}
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                  </ul>
+                  <p class="mb-0">{{ lang.story.preview_warning }}</p>
+                </div>
+              {% endif %}
+            {% endif %}
+          {% endif %}
+
+          <div class="intro-hint">
+            <small class="hint-desktop">{{ lang.story.scroll_hint }}</small>
+            <small class="hint-mobile">{{ lang.story.scroll_hint_mobile }}</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step data elements (hidden) — card-pool.js reads these at init to build visual cards -->
+      <div class="step-data" style="display:none;" aria-hidden="true">
+        {% if page.data_file %}
+          {% assign steps = story_data %}
+          {% if is_encrypted %}
+            <!-- Steps arrive via story-unlock.js: the decrypted envelope's
+                 HTML (rendered at build time by story-fragment.html through
+                 the same story-steps.html include) is injected here. -->
+            <div id="encrypted-steps-container"></div>
+          {% else %}
+            {% include story-steps.html steps=steps %}
+          {% endif %}
+        {% endif %}
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Step Counter -->
+  {% if show_story_steps %}
+  <div id="step-counter" class="step-counter d-none">
+    <small id="current-object-title"></small>
+  </div>
+  {% endif %}
+
+  <!-- Object Credits Badge -->
+  <div id="object-credits-badge" class="object-credits-badge d-none">
+    <span id="object-credits-text"></span>
+    <button id="object-credits-dismiss" class="credits-dismiss-btn" aria-label="{{ lang.story.dismiss_credits | default: 'Dismiss credits' }}">&times;</button>
+  </div>
+
+  <!-- Panels -->
+  {% include panels.html %}
+
+  <!-- Share Panel -->
+  {% include share-panel.html %}
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- IIIF viewer (OpenSeadragon — vendored, see assets/vendor/) -->
+  <script src="{{ '/assets/vendor/openseadragon.min.js' | relative_url }}"></script>
+
+  <!-- KaTeX for LaTeX rendering (loaded dynamically if story has LaTeX) -->
+  <!-- CDN URLs, version pin, and the delimiter list are read from
+       _data/katex.yml, the single source shared with _includes/katex.html
+       (used by the default layout for non-story pages). To bump the KaTeX
+       version, edit _data/katex.yml only.
+       The loader itself is assets/js/katex-loader.js; this inline script
+       hands it the config plus the Liquid-dependent has_latex flag (protected
+       stories carry no readable steps before unlock, so their flag must ride
+       frontmatter). -->
+  <script>
+    window.telarKatexConfig = {
+      hasLatex: {% if page.has_latex %}true{% else %}false{% endif %},
+      cssUrl: {{ site.data.katex.css | jsonify }},
+      urls: [
+        {{ site.data.katex.js | jsonify }},
+        {{ site.data.katex.auto_render | jsonify }},
+        {{ site.data.katex.mhchem | jsonify }}
+      ],
+      delimiters: {{ site.data.katex.delimiters | jsonify }}
+    };
+  </script>
+  <script src="{{ '/assets/js/katex-loader.js' | relative_url }}"></script>
+
+  <!-- Telar Core -->
+  <script src="{{ '/assets/js/telar.js' | relative_url }}"></script>
+
+  <!-- Story-specific JavaScript -->
+  <script>
+    // Pass story data to JavaScript
+    {% if page.data_file %}
+    {% assign story_json = story_data %}
+    {% if is_encrypted %}
+    // Protected story — stub envelope. The post-build encryption step
+    // (scripts/encrypt_protected_stories.py) swaps in the real ciphertext;
+    // if a build skips that step, the stub keeps the page failing safe:
+    // unlock UI present, decryption fails loudly, no plaintext on the page.
+    // The story id is the envelope's additional authenticated data: the JS
+    // decrypt must pass the exact identifier the encrypt step bound.
+    window.telarStoryId = {{ page.data_file | jsonify }};
+    window.storyData = {"encrypted": true, "salt": "", "iv": "", "ciphertext": "__TELAR_PENDING__"};
+    {% else %}
+    // Story is not encrypted - pass steps normally
+    {% assign first_step = story_json[0] %}
+    {% if first_step._metadata %}
+      {% assign first_step = story_json[1] %}
+    {% endif %}
+    window.storyData = {
+      steps: {{ story_json | jsonify }},
+      firstObject: "{{ first_step.object }}"
+    };
+    {% endif %}
+    {% endif %}
+
+    // Pass objects data for manifest lookup
+    window.objectsData = {{ site.data.objects | jsonify }};
+    {% if site.data.audio_objects %}
+    // Audio objects manifest: maps object_id → file extension (generated by process_audio.py)
+    window.audioObjects = {{ site.data.audio_objects | jsonify }};
+    {% endif %}
+  </script>
+  {% if is_encrypted %}
+  <script src="{{ '/assets/js/story-unlock.js' | relative_url }}"></script>
+  {% endif %}
+  <script src="{{ '/assets/js/telar-story.js' | relative_url }}"></script>
+  <script src="{{ '/assets/js/widgets.js' | relative_url }}"></script>
+
+  <!-- Share Panel JavaScript -->
+  <script src="{{ '/assets/js/share-panel.js' | relative_url }}"></script>
+
+  <!-- Story Unlock Overlay (for protected stories) - must be last for z-index -->
+  {% if is_encrypted %}
+  <div id="story-unlock-overlay" class="story-unlock-overlay d-none">
+    <div class="unlock-content">
+      <div class="unlock-icon">
+        <!-- Minimalist keyhole -->
+        <svg viewBox="0 0 48 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="20" r="16" fill="#fff"/>
+          <path d="M17 32L10 68H38L31 32H17Z" fill="#fff"/>
+        </svg>
+      </div>
+      <h2 class="unlock-title">{{ lang.unlock.title | default: "This story is protected" }}</h2>
+      <p class="unlock-description">{{ lang.unlock.description | default: "The author has restricted access to this story. Enter the key to continue." }}</p>
+      <form id="unlock-form" class="unlock-form">
+        <div class="input-group">
+          <input type="password" id="unlock-key-input" placeholder="{{ lang.unlock.placeholder | default: 'Enter key' }}" autocomplete="off">
+          <button type="button" id="toggle-key-visibility" aria-label="{{ lang.unlock.toggle_key_visibility | default: 'Toggle key visibility' }}">
+            <svg class="icon icon-eye" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div id="unlock-error" class="unlock-error d-none"></div>
+        <button type="submit" class="unlock-button">{{ lang.unlock.button | default: "Unlock" }}</button>
+      </form>
+      <a href="{{ '/' | relative_url }}" class="unlock-back-link">{{ lang.unlock.back_link | default: "← Back to stories" }}</a>
+    </div>
+  </div>
+  {% endif %}
+</body>
+</html>
