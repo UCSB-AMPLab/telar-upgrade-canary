@@ -18,4 +18,4 @@ permalink: /glossary/
   y escríbelo aquí en markdown.
 -->
 
-{{ lang.pages.glossary_intro }}
+{% include glossary-intro.html lang=lang %}
