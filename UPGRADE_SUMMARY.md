@@ -4,11 +4,11 @@ title: Resumen de actualización
 ---
 
 ## Resumen de actualización
-- **Desde:** 1.8.0
-- **Hasta:** 1.8.1
-- **Fecha:** 2026-10-10
-- **Cambios automatizados:** 20
-- **Pasos manuales:** 1
+- **Desde:** 1.8.1
+- **Hasta:** 1.8.2
+- **Fecha:** 2026-10-16
+- **Cambios automatizados:** 13
+- **Pasos manuales:** 2
 
 ## Cambios automatizados aplicados
 
@@ -17,41 +17,32 @@ title: Resumen de actualización
 - [x] Se actualizó package.json
 - [x] Se actualizó package-lock.json
 
-### Layouts (4 archivos)
+### Scripts (7 archivos)
 
-- [x] Se actualizó _layouts/index.html
-- [x] Se actualizó _layouts/object.html
-- [x] Se actualizó _layouts/objects-index.html
-- [x] Se actualizó _layouts/story.html
-
-### Includes (2 archivos)
-
-- [x] Se actualizó _includes/story-step.html
-- [x] Se actualizó _includes/iiif-url-warning.html
-
-### Scripts (10 archivos)
-
-- [x] Se actualizó assets/js/telar-story.js
-- [x] Se actualizó assets/js/telar-story.js.map
-- [x] Se actualizó assets/js/telar-story/deep-link.js
-- [x] Se actualizó assets/js/telar-story/iiif-card.js
-- [x] Se actualizó assets/js/telar-story/scroll-engine.js
-- [x] Se actualizó scripts/telar/config.py
-- [x] Se actualizó scripts/telar/glossary.py
-- [x] Se actualizó scripts/telar/core.py
-- [x] Se actualizó scripts/telar/demo.py
-- [x] Se actualizó scripts/telar/processors/objects/remote.py
+- [x] Se actualizó scripts/dev-only-files.txt
+- [x] Se actualizó scripts/telar/dev_only_files.py
+- [x] Se eliminó scripts/migrations/: este sitio usa el lanzador de actualización, que descarga una copia verificada de las migraciones cada vez que se ejecuta.
+- [x] Se eliminó scripts/telar_upgrade.py: la actualización se ejecuta con las herramientas verificadas que descarga `scripts/upgrade.py`
+- [x] Se eliminó scripts/telar_upgrade_common.py: la actualización se ejecuta con las herramientas verificadas que descarga `scripts/upgrade.py`
+- [x] Se eliminó scripts/telar_upgrade_regen.py: la actualización se ejecuta con las herramientas verificadas que descarga `scripts/upgrade.py`
+- [x] Se eliminó scripts/telar_upgrade_report.py: la actualización se ejecuta con las herramientas verificadas que descarga `scripts/upgrade.py`
 
 ### Documentación (2 archivos)
 
 - [x] Se actualizó README.md
 - [x] Se actualizó CHANGELOG.md
 
+### Otros (2 archivos)
+
+- [x] telar-content/spreadsheets/glossary.csv: la entrada sobre Telar quedó solo en el idioma de tu sitio
+- [x] telar-content/spreadsheets/glossary.csv: las filas de instrucciones ahora indican la carpeta telar-content/texts/glossary/
+
 ## Pasos manuales necesarios
 
 Por favor completa estos pasos:
 
-1. **No se requiere ninguna acción.** La versión 1.8.1 corrige la navegación de las historias y dos detalles del contenido de demostración, y ya no marca como inválidos algunos manifiestos IIIF válidos. La actualización instala los archivos de Telar que cambiaron; el contenido y la configuración del sitio quedan como estaban. ([guía](https://telar.org/guia/configuracion/actualizacion/))
+1. **Borra `.github/workflows/telar-tests.yml` (opcional).** Este workflow ejecuta las pruebas del propio Telar y solo corre en los repositorios de Telar; en tu sitio no hace más que aparecer como una verificación omitida. GitHub no permite que una actualización automática modifique archivos de workflow, y por eso borrarlo te toca a ti. Los archivos de pruebas pueden quedarse: no intervienen en nada de lo que el sitio construye o publica. ([guía](https://telar.org/guia/configuracion/actualizacion/))
+2. **Deja en un solo idioma la entrada sobre Telar en tu hoja del glosario.** La actualización ya quitó el párrafo en el otro idioma de la fila «telar» de glossary.csv, pero tu sitio toma las hojas de cálculo de Google Sheets, así que la próxima construcción vuelve a traer los dos párrafos. En la hoja del glosario, borra de la definición de la fila «telar» el párrafo en el otro idioma. ([guía](https://telar.org/guia/configuracion/actualizacion/))
 
 ## Recursos
 
